@@ -121,6 +121,22 @@ export class ConversationStore {
       .run(nickname, unixNow(), conversationId);
   }
 
+  deleteConversation(conversationId: string): void {
+    const deleteConversation = this.db.prepare(`
+      DELETE FROM conversations
+      WHERE id = ?
+    `);
+    const deleteMessages = this.db.prepare(`
+      DELETE FROM messages
+      WHERE conversation_id = ?
+    `);
+
+    this.db.transaction(() => {
+      deleteMessages.run(conversationId);
+      deleteConversation.run(conversationId);
+    })();
+  }
+
   insertMessage(message: StoredMessageEnvelope): void {
     this.db
       .prepare(`

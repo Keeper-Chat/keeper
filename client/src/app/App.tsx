@@ -34,6 +34,7 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
   const [newChatMode, setNewChatMode] = useState(false);
   const [newChatKeyInput, setNewChatKeyInput] = useState("");
   const [newChatError, setNewChatError] = useState<string>();
+  const [conversationPendingDeletion, setConversationPendingDeletion] = useState<{ id: string; label: string }>();
   const [messageLimit, setMessageLimit] = useState(100);
   const [messageScrollOffset, setMessageScrollOffset] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
@@ -74,9 +75,11 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
   const footerText = truncateLine(
     focus === "chat" ? `> ${composeText}` : composeText,
     footerContentWidth,
-    composeText
+    conversationPendingDeletion
+      ? `Delete ${conversationPendingDeletion.label}? Press y to confirm or Esc to cancel.`
+      : composeText
       ? undefined
-      : "Type a message, /nickname <name>, press n for new chat, or Up/Down/PageUp/PageDown to scroll"
+      : "Type a message, /nickname <name>, press n for new chat, press d to delete a chat, or use Up/Down/PageUp/PageDown to scroll"
   );
 
   useEffect(() => {
@@ -305,6 +308,50 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
     setStatus("Connected");
   }
 
+  function beginDeleteConversation(): void {
+    if (!selectedConversation) {
+      setStatus("No conversation selected");
+      return;
+    }
+
+    setConversationPendingDeletion({
+      id: selectedConversation.id,
+      label: getConversationLabel(selectedConversation)
+    });
+    setFocus("sidebar");
+    setStatus(`Delete conversation ${getConversationLabel(selectedConversation)}? Press y to confirm or Esc to cancel.`);
+  }
+
+  function cancelDeleteConversation(): void {
+    setConversationPendingDeletion(undefined);
+    setStatus("Connected");
+  }
+
+  function confirmDeleteConversation(): void {
+    if (!conversationPendingDeletion) {
+      return;
+    }
+
+    const deletedConversationIndex = conversations.findIndex(
+      (conversation) => conversation.id === conversationPendingDeletion.id
+    );
+    store.deleteConversation(conversationPendingDeletion.id);
+    const updated = store.listConversations();
+    const nextSelectedIndex =
+      updated.length === 0
+        ? 0
+        : deletedConversationIndex >= 0
+        ? Math.min(deletedConversationIndex, Math.max(updated.length - 1, 0))
+        : 0;
+    setConversations(updated);
+    setConversationPendingDeletion(undefined);
+    setComposeText("");
+    setMessageScrollOffset(0);
+    setMessageLimit(100);
+    setSelectedIndex(nextSelectedIndex);
+    setStatus(`Deleted conversation ${conversationPendingDeletion.label}`);
+  }
+
   function appendToNewChatInput(value: string): void {
     setNewChatKeyInput((current) => current + value.replace(/\r/g, ""));
     if (newChatError) {
@@ -321,6 +368,17 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
     if (showPublicKey) {
       if (key.escape || key.return || input.toLowerCase() === "q") {
         setShowPublicKey(false);
+      }
+      return;
+    }
+
+    if (conversationPendingDeletion) {
+      if (key.escape) {
+        cancelDeleteConversation();
+        return;
+      }
+      if (input.toLowerCase() === "y") {
+        confirmDeleteConversation();
       }
       return;
     }
@@ -365,6 +423,9 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
       }
       if (input.toLowerCase() === "n") {
         openNewChat();
+      }
+      if (input.toLowerCase() === "d") {
+        beginDeleteConversation();
       }
       return;
     }
@@ -437,11 +498,17 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
             )}
           </Box>
         </Box>
+      ) : conversationPendingDeletion ? (
+        <Box borderStyle="round" flexDirection="column" paddingX={1} marginTop={1}>
+          <Text color="red">Delete Conversation</Text>
+          <Text>{`Delete ${conversationPendingDeletion.label} and all local messages?`}</Text>
+          <Text dimColor>Press y to confirm. Esc cancels.</Text>
+        </Box>
       ) : (
         <Box height={mainPaneHeight} overflow="hidden">
           <Box width="30%" borderStyle="round" flexDirection="column" paddingX={1} overflow="hidden">
             <Text color={focus === "sidebar" ? "cyan" : undefined}>
-              {truncateLine("Conversations (press n for new chat)", sidebarContentWidth)}
+              {truncateLine("Conversations (n=new, d=delete)", sidebarContentWidth)}
             </Text>
             {conversations.length === 0 ? <Text dimColor>{truncateLine("No chats yet", sidebarContentWidth)}</Text> : null}
             {visibleConversations.map((conversation) => (
@@ -454,9 +521,7 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
             <Text color={focus === "chat" ? "cyan" : undefined}>
               {truncateLine(
                 selectedConversation
-                  ? `${selectedConversation.nickname || truncateFingerprint(selectedConversation.peerFingerprint)} ${
-                      presence[selectedConversation.peerFingerprint] ? "●" : "○"
-                    }`
+                  ? `${getConversationLabel(selectedConversation)} ${presence[selectedConversation.peerFingerprint] ? "●" : "○"}`
                   : "No conversation selected",
                 chatContentWidth
               )}
@@ -574,9 +639,13 @@ function getVisibleConversationEntries(
 
   return conversations.slice(startIndex, startIndex + visibleRows).map((conversation, index) => ({
     id: conversation.id,
-    label: truncateLine(conversation.nickname || truncateFingerprint(conversation.peerFingerprint), width),
+    label: truncateLine(getConversationLabel(conversation), width),
     isSelected: startIndex + index === selectedIndex
   }));
+}
+
+function getConversationLabel(conversation: Conversation): string {
+  return conversation.nickname || truncateFingerprint(conversation.peerFingerprint);
 }
 
 function wrapPrefixedText(prefix: string, continuationPrefix: string, text: string, width: number): string[] {
