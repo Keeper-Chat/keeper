@@ -19,3 +19,18 @@ cd server
 go test ./...
 go build ./...
 ```
+
+## Docker
+
+Build and run the server container:
+
+```bash
+docker build -t thekeeper-server ./server
+docker run --rm -p 8787:8787 -e THEKEEPER_SERVER_ADDR=0.0.0.0:8787 thekeeper-server
+```
+
+An example Compose file is available at `compose.server.example.yml`:
+
+```bash
+docker compose -f compose.server.example.yml up --build
+```

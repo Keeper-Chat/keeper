@@ -1,0 +1,10 @@
+services:
+  thekeeper-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      THEKEEPER_SERVER_ADDR: 0.0.0.0:8787
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
