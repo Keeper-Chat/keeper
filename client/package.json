@@ -1,13 +1,47 @@
 {
   "name": "thekeeper-client",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.2",
+  "description": "Terminal client for TheKeeper encrypted chat",
   "type": "module",
   "bin": {
-    "thekeeper-client": "./dist/index.js"
+    "thekeeper": "./dist/index.js",
+    "keeper": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "thekeeper",
+    "cli",
+    "tui",
+    "chat",
+    "openpgp",
+    "encrypted"
+  ],
+  "homepage": "https://github.com/Keeper-Chat/keeper/tree/main/client",
+  "bugs": {
+    "url": "https://github.com/Keeper-Chat/keeper/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Keeper-Chat/keeper.git",
+    "directory": "client"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "preferGlobal": true,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "pack:dry-run": "npm pack --dry-run",
     "start": "node dist/index.js",
     "test": "node --test --import tsx"
   },

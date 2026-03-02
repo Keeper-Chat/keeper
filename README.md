@@ -2,6 +2,26 @@
 
 The Keeper allows you to send encrypted communications using a easy to use TUI client.
 
+## Install The Client
+
+Install the published client from npm:
+
+```bash
+npm install --global thekeeper-client
+```
+
+Run it with:
+
+```bash
+thekeeper
+```
+
+Alias:
+
+```bash
+keeper
+```
+
 ## Development
 
 Client:
