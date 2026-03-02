@@ -18,4 +18,4 @@ We support both a client and a protocol, and each has its own versioning and sup
 
 ## Reporting a Vulnerability
 
-If you find a vulnerability then please open a issue on [this repository](https://github.com/Keeper-Chat/keeper).
+If you discover a vulnerability, please report it privately via the security section on the [Keeper repository](https://github.com/Keeper-Chat/keeper).
