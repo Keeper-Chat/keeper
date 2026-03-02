@@ -24,6 +24,12 @@ type SendMessageFrame struct {
 	CiphertextArmored    string `json:"ciphertextArmored"`
 }
 
+type ReturnMessageFrame struct {
+	Type              string `json:"type"`
+	MessageID         string `json:"messageId"`
+	SenderFingerprint string `json:"senderFingerprint"`
+}
+
 type RegisterOkFrame struct {
 	Type       string `json:"type"`
 	Fingerprint string `json:"fingerprint"`

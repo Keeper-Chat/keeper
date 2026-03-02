@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
-import { Conversation, StoredMessageEnvelope } from "../types.js";
+import { BlockedKey, Conversation, StoredMessageEnvelope } from "../types.js";
 import { profileConversationDir } from "../core/paths.js";
 import { generateId, unixNow } from "../core/utils.js";
 
@@ -44,7 +44,60 @@ export class ConversationStore {
 
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_sent_at
         ON messages (conversation_id, sent_at DESC);
+
+      CREATE TABLE IF NOT EXISTS blocked_keys (
+        fingerprint TEXT PRIMARY KEY,
+        public_key_armored TEXT NOT NULL,
+        blocked_at INTEGER NOT NULL
+      );
     `);
+  }
+
+  listBlockedKeys(): BlockedKey[] {
+    const stmt = this.db.prepare(`
+      SELECT
+        fingerprint,
+        public_key_armored AS publicKeyArmored,
+        blocked_at AS blockedAt
+      FROM blocked_keys
+      ORDER BY blocked_at DESC
+    `);
+
+    return stmt.all() as BlockedKey[];
+  }
+
+  isBlocked(fingerprint: string): boolean {
+    const stmt = this.db.prepare(`
+      SELECT 1
+      FROM blocked_keys
+      WHERE fingerprint = ?
+    `);
+
+    return Boolean(stmt.get(fingerprint));
+  }
+
+  blockKey(fingerprint: string, publicKeyArmored: string): void {
+    this.db
+      .prepare(`
+        INSERT INTO blocked_keys (
+          fingerprint,
+          public_key_armored,
+          blocked_at
+        ) VALUES (?, ?, ?)
+        ON CONFLICT(fingerprint) DO UPDATE SET
+          public_key_armored = excluded.public_key_armored,
+          blocked_at = excluded.blocked_at
+      `)
+      .run(fingerprint, publicKeyArmored, unixNow());
+  }
+
+  unblockKey(fingerprint: string): void {
+    this.db
+      .prepare(`
+        DELETE FROM blocked_keys
+        WHERE fingerprint = ?
+      `)
+      .run(fingerprint);
   }
 
   listConversations(): Conversation[] {

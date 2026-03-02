@@ -24,6 +24,9 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
   const store = useMemo(() => new ConversationStore(profile.profileName), [profile.profileName]);
   const client = useMemo(() => new ProtocolClient(serverUrl), [serverUrl]);
   const [conversations, setConversations] = useState<Conversation[]>(() => store.listConversations());
+  const [blockedFingerprints, setBlockedFingerprints] = useState<string[]>(() =>
+    store.listBlockedKeys().map((entry) => entry.fingerprint)
+  );
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [messages, setMessages] = useState<DecryptedMessage[]>([]);
   const [focus, setFocus] = useState<FocusRegion>("sidebar");
@@ -40,8 +43,12 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
   const [isConnected, setIsConnected] = useState(false);
   const [showPublicKey, setShowPublicKey] = useState(false);
   const { stdout } = useStdout();
+  const blockedFingerprintSet = useMemo(() => new Set(blockedFingerprints), [blockedFingerprints]);
 
   const selectedConversation = conversations[selectedIndex];
+  const selectedConversationBlocked = selectedConversation
+    ? blockedFingerprintSet.has(selectedConversation.peerFingerprint)
+    : false;
   const selectedConversationRef = useRef<Conversation | undefined>(selectedConversation);
   const messageLimitRef = useRef(messageLimit);
   const passphraseRef = useRef(passphrase);
@@ -69,8 +76,15 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
   const messageWindowStart = Math.max(messageWindowEnd - visibleMessageLineCount, 0);
   const visibleMessageLines = renderedMessageLines.slice(messageWindowStart, messageWindowEnd);
   const visibleConversations = useMemo(
-    () => getVisibleConversationEntries(conversations, selectedIndex, sidebarContentHeight - 1, sidebarContentWidth),
-    [conversations, selectedIndex, sidebarContentHeight, sidebarContentWidth]
+    () =>
+      getVisibleConversationEntries(
+        conversations,
+        blockedFingerprintSet,
+        selectedIndex,
+        sidebarContentHeight - 1,
+        sidebarContentWidth
+      ),
+    [blockedFingerprints, conversations, selectedIndex, sidebarContentHeight, sidebarContentWidth]
   );
   const footerText = truncateLine(
     focus === "chat" ? `> ${composeText}` : composeText,
@@ -79,7 +93,7 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
       ? `Delete ${conversationPendingDeletion.label}? Press y to confirm or Esc to cancel.`
       : composeText
       ? undefined
-      : "Type a message, /nickname <name>, press n for new chat, press d to delete a chat, or use Up/Down/PageUp/PageDown to scroll"
+      : "Type a message, /nickname <name>, /block, /unblock, press n for new chat, press d to delete a chat, or use Up/Down/PageUp/PageDown to scroll"
   );
 
   useEffect(() => {
@@ -111,6 +125,7 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
     client.on("messageDelivery", (frame) => {
       if (!frame.accepted) {
         store.updateDeliveryState(frame.messageId, "failed");
+        setStatus(getDeliveryFailureMessage(frame.reason));
       } else {
         store.updateDeliveryState(frame.messageId, "sent", frame.messageId);
       }
@@ -118,6 +133,16 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
       void loadMessages();
     });
     client.on("incomingMessage", (frame) => {
+      if (store.isBlocked(frame.senderFingerprint)) {
+        client.send({
+          type: "return_message",
+          messageId: frame.messageId,
+          senderFingerprint: frame.senderFingerprint
+        });
+        setStatus(`Returned blocked message from ${truncateFingerprint(frame.senderFingerprint)}`);
+        return;
+      }
+
       const conversation = store.upsertConversation(frame.senderFingerprint, frame.senderPublicKeyArmored);
       store.insertMessage({
         id: frame.messageId,
@@ -166,6 +191,10 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
 
   function refreshConversations(): void {
     setConversations(store.listConversations());
+  }
+
+  function refreshBlockedKeys(): void {
+    setBlockedFingerprints(store.listBlockedKeys().map((entry) => entry.fingerprint));
   }
 
   async function loadMessages(limit = messageLimitRef.current, conversation = selectedConversationRef.current): Promise<void> {
@@ -220,11 +249,34 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
       return;
     }
 
-    if (composeText.startsWith("/nickname ")) {
-      const nickname = composeText.slice("/nickname ".length).trim();
+    const trimmedComposeText = composeText.trim();
+
+    if (trimmedComposeText.startsWith("/nickname ")) {
+      const nickname = trimmedComposeText.slice("/nickname ".length).trim();
       store.setNickname(selectedConversation.id, nickname || null);
       setComposeText("");
       refreshConversations();
+      return;
+    }
+
+    if (trimmedComposeText === "/block") {
+      store.blockKey(selectedConversation.peerFingerprint, selectedConversation.peerPublicKeyArmored);
+      refreshBlockedKeys();
+      setComposeText("");
+      setStatus(`Blocked ${truncateFingerprint(selectedConversation.peerFingerprint)}`);
+      return;
+    }
+
+    if (trimmedComposeText === "/unblock") {
+      store.unblockKey(selectedConversation.peerFingerprint);
+      refreshBlockedKeys();
+      setComposeText("");
+      setStatus(`Unblocked ${truncateFingerprint(selectedConversation.peerFingerprint)}`);
+      return;
+    }
+
+    if (selectedConversationBlocked) {
+      setStatus("Recipient is blocked");
       return;
     }
 
@@ -316,10 +368,12 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
 
     setConversationPendingDeletion({
       id: selectedConversation.id,
-      label: getConversationLabel(selectedConversation)
+      label: getConversationLabel(selectedConversation, selectedConversationBlocked)
     });
     setFocus("sidebar");
-    setStatus(`Delete conversation ${getConversationLabel(selectedConversation)}? Press y to confirm or Esc to cancel.`);
+    setStatus(
+      `Delete conversation ${getConversationLabel(selectedConversation, selectedConversationBlocked)}? Press y to confirm or Esc to cancel.`
+    );
   }
 
   function cancelDeleteConversation(): void {
@@ -521,7 +575,9 @@ export function App({ profile, passphrase, serverUrl }: AppProps): React.JSX.Ele
             <Text color={focus === "chat" ? "cyan" : undefined}>
               {truncateLine(
                 selectedConversation
-                  ? `${getConversationLabel(selectedConversation)} ${presence[selectedConversation.peerFingerprint] ? "●" : "○"}`
+                  ? `${getConversationLabel(selectedConversation, selectedConversationBlocked)} ${
+                      presence[selectedConversation.peerFingerprint] ? "●" : "○"
+                    }`
                   : "No conversation selected",
                 chatContentWidth
               )}
@@ -624,6 +680,7 @@ function formatMessageLines(messages: DecryptedMessage[], width: number): Render
 
 function getVisibleConversationEntries(
   conversations: Conversation[],
+  blockedFingerprints: Set<string>,
   selectedIndex: number,
   maxRows: number,
   width: number
@@ -639,13 +696,27 @@ function getVisibleConversationEntries(
 
   return conversations.slice(startIndex, startIndex + visibleRows).map((conversation, index) => ({
     id: conversation.id,
-    label: truncateLine(getConversationLabel(conversation), width),
+    label: truncateLine(getConversationLabel(conversation, blockedFingerprints.has(conversation.peerFingerprint)), width),
     isSelected: startIndex + index === selectedIndex
   }));
 }
 
-function getConversationLabel(conversation: Conversation): string {
-  return conversation.nickname || truncateFingerprint(conversation.peerFingerprint);
+function getConversationLabel(conversation: Conversation, isBlocked = false): string {
+  const label = conversation.nickname || truncateFingerprint(conversation.peerFingerprint);
+  return isBlocked ? `${label} [blocked]` : label;
+}
+
+function getDeliveryFailureMessage(reason: string): string {
+  switch (reason) {
+    case "returned_to_sender":
+      return "Returned to sender";
+    case "recipient_offline":
+      return "Recipient is offline";
+    case "recipient_unavailable":
+      return "Recipient is unavailable";
+    default:
+      return reason || "Delivery failed";
+  }
 }
 
 function wrapPrefixedText(prefix: string, continuationPrefix: string, text: string, width: number): string[] {

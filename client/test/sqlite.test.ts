@@ -71,3 +71,29 @@ test("conversation store deletes a conversation and its messages", () =>
       ["message-2"]
     );
   }));
+
+test("conversation store persists blocked keys per profile", () =>
+  withTempHome(() => {
+    const defaultStore = new ConversationStore("default");
+    const secondStore = new ConversationStore("second");
+
+    defaultStore.blockKey("peer-1", "public-key-1");
+    secondStore.blockKey("peer-2", "public-key-2");
+
+    assert.equal(defaultStore.isBlocked("peer-1"), true);
+    assert.equal(defaultStore.isBlocked("peer-2"), false);
+    assert.equal(secondStore.isBlocked("peer-2"), true);
+    assert.deepEqual(
+      defaultStore.listBlockedKeys().map((entry) => entry.fingerprint),
+      ["peer-1"]
+    );
+
+    defaultStore.unblockKey("peer-1");
+
+    assert.equal(defaultStore.isBlocked("peer-1"), false);
+    assert.deepEqual(defaultStore.listBlockedKeys(), []);
+    assert.deepEqual(
+      secondStore.listBlockedKeys().map((entry) => entry.fingerprint),
+      ["peer-2"]
+    );
+  }));

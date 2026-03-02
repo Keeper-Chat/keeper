@@ -44,6 +44,16 @@ Transport: WebSocket JSON frames.
 }
 ```
 
+### `return_message`
+
+```json
+{
+  "type": "return_message",
+  "messageId": "string",
+  "senderFingerprint": "string"
+}
+```
+
 ## Server -> Client
 
 ### `register_ok`
@@ -107,6 +117,7 @@ Transport: WebSocket JSON frames.
 - Presence is in-memory only.
 - The server stores no durable messages.
 - `message_delivery.accepted=true` means the server forwarded the opaque ciphertext to an online peer.
+- `message_delivery.accepted=false` with `reason="returned_to_sender"` means the recipient client rejected the forwarded message and sent it back.
 - Only one active session per fingerprint is allowed; a newer session replaces the older one.
 - Clients send a heartbeat every 10 seconds.
 - The server expires a client after 30 seconds without a heartbeat.

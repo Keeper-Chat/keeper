@@ -24,6 +24,12 @@ export interface Conversation {
   lastMessageAt: number | null;
 }
 
+export interface BlockedKey {
+  fingerprint: string;
+  publicKeyArmored: string;
+  blockedAt: number;
+}
+
 export interface StoredMessageEnvelope {
   id: string;
   conversationId: string;
@@ -55,7 +61,8 @@ export type ClientFrame =
   | RegisterFrame
   | HeartbeatFrame
   | PresenceQueryFrame
-  | SendMessageFrame;
+  | SendMessageFrame
+  | ReturnMessageFrame;
 
 export interface RegisterFrame {
   type: "register";
@@ -79,6 +86,12 @@ export interface SendMessageFrame {
   messageId: string;
   recipientFingerprint: string;
   ciphertextArmored: string;
+}
+
+export interface ReturnMessageFrame {
+  type: "return_message";
+  messageId: string;
+  senderFingerprint: string;
 }
 
 export interface RegisterOkFrame {

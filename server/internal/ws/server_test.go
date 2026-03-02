@@ -182,3 +182,35 @@ func TestDeliverMessageReturnsUnavailableWhenRelayWriteFails(t *testing.T) {
 		t.Fatalf("expected failed relay recipient to be removed from presence")
 	}
 }
+
+func TestReturnMessageNotifiesOriginalSender(t *testing.T) {
+	server := NewServer()
+	senderTransport := &fakeJSONConn{}
+	sender := &clientConn{conn: senderTransport, fingerprint: "sender", publicKeyArmored: "sender-pub"}
+	server.presence.Register("sender", "sender-pub", sender)
+
+	recipient := &clientConn{fingerprint: "recipient", publicKeyArmored: "recipient-pub"}
+	server.returnMessage(recipient, protocol.ReturnMessageFrame{
+		Type:              "return_message",
+		MessageID:         "msg-1",
+		SenderFingerprint: "sender",
+	})
+
+	if len(senderTransport.writes) != 1 {
+		t.Fatalf("expected one return delivery update, got %d", len(senderTransport.writes))
+	}
+
+	delivery, ok := senderTransport.writes[0].(protocol.MessageDeliveryFrame)
+	if !ok {
+		t.Fatalf("expected returned frame to be a message delivery, got %T", senderTransport.writes[0])
+	}
+	if delivery.Accepted {
+		t.Fatalf("expected returned delivery to fail, got %+v", delivery)
+	}
+	if delivery.Reason != "returned_to_sender" {
+		t.Fatalf("expected returned_to_sender reason, got %+v", delivery)
+	}
+	if delivery.MessageID != "msg-1" {
+		t.Fatalf("expected original message id to be preserved, got %+v", delivery)
+	}
+}

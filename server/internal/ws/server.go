@@ -119,6 +119,17 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			client.write(s.deliverMessage(client, frame))
+		case "return_message":
+			var frame protocol.ReturnMessageFrame
+			if err := json.Unmarshal(data, &frame); err != nil {
+				client.write(protocol.ErrorFrame{Type: "error", Code: "bad_return_message", Message: "Invalid return frame"})
+				continue
+			}
+			if client.fingerprint == "" {
+				client.write(protocol.ErrorFrame{Type: "error", Code: "not_registered", Message: "Register before returning"})
+				continue
+			}
+			s.returnMessage(client, frame)
 		default:
 			client.write(protocol.ErrorFrame{Type: "error", Code: "unknown_frame_type", Message: "Unknown frame type"})
 		}
@@ -202,6 +213,28 @@ func (s *Server) deliverMessage(sender *clientConn, frame protocol.SendMessageFr
 		MessageID: frame.MessageID,
 		Accepted:  true,
 		Reason:    "",
+	}
+}
+
+func (s *Server) returnMessage(recipient *clientConn, frame protocol.ReturnMessageFrame) {
+	session, ok := s.presence.SessionFor(frame.SenderFingerprint)
+	if !ok {
+		return
+	}
+
+	sender, ok := session.Session.(*clientConn)
+	if !ok {
+		return
+	}
+
+	if err := sender.write(protocol.MessageDeliveryFrame{
+		Type:      "message_delivery",
+		RequestID: "",
+		MessageID: frame.MessageID,
+		Accepted:  false,
+		Reason:    "returned_to_sender",
+	}); err != nil {
+		s.presence.Unregister(frame.SenderFingerprint, sender)
 	}
 }
 
