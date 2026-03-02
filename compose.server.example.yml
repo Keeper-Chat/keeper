@@ -1,8 +1,7 @@
 services:
   thekeeper-server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    image: ghcr.io/keeper-chat/keeper-server:latest
+    pull_policy: always
     environment:
       THEKEEPER_SERVER_ADDR: 0.0.0.0:8787
     ports:
