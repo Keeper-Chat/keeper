@@ -65,6 +65,21 @@ export class ProfileManager {
     return metadata;
   }
 
+  deleteProfile(profileName: string): void {
+    const normalizedName = profileName.trim();
+    if (!normalizedName) {
+      throw new Error("Profile name cannot be empty");
+    }
+
+    const keyDir = profileKeyDir(normalizedName);
+    if (!fs.existsSync(keyDir)) {
+      throw new Error(`Profile ${normalizedName} does not exist`);
+    }
+
+    fs.rmSync(keyDir, { recursive: true, force: false });
+    fs.rmSync(profileConversationDir(normalizedName), { recursive: true, force: true });
+  }
+
   loadProfile(profileName: string): ProfileRecord {
     const keyDir = profileKeyDir(profileName);
     const metadata = JSON.parse(fs.readFileSync(path.join(keyDir, "profile.json"), "utf8")) as ProfileMetadata;

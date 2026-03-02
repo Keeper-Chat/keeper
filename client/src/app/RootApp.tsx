@@ -11,6 +11,7 @@ type Stage =
   | "create-choice"
   | "create-passphrase"
   | "select-profile"
+  | "confirm-delete"
   | "unlock"
   | "chat";
 
@@ -27,6 +28,7 @@ export function RootApp({ serverUrl }: RootAppProps): React.JSX.Element {
   const [passphraseInput, setPassphraseInput] = useState("");
   const [createWithPassphrase, setCreateWithPassphrase] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
+  const [profilePendingDeletion, setProfilePendingDeletion] = useState<string>();
   const [status, setStatus] = useState("Initializing...");
 
   useEffect(() => {
@@ -108,6 +110,53 @@ export function RootApp({ serverUrl }: RootAppProps): React.JSX.Element {
     }
     setStatus("Select a profile. Press c to create a new one.");
     setStage("select-profile");
+  }
+
+  function beginDeleteProfile(): void {
+    const profile = profiles[selectedIndex];
+    if (!profile) {
+      return;
+    }
+
+    setProfilePendingDeletion(profile.profileName);
+    setStatus(`Delete profile ${profile.profileName}? Press y to confirm or Esc to cancel.`);
+    setStage("confirm-delete");
+  }
+
+  function cancelDeleteProfile(): void {
+    setProfilePendingDeletion(undefined);
+    resetCreateFlowStatus();
+  }
+
+  function confirmDeleteProfile(): void {
+    if (!profilePendingDeletion) {
+      resetCreateFlowStatus();
+      return;
+    }
+
+    try {
+      manager.deleteProfile(profilePendingDeletion);
+      const discovered = manager.listProfiles();
+      setProfiles(discovered);
+      setSelectedIndex((current) => Math.min(current, Math.max(discovered.length - 1, 0)));
+      setProfilePendingDeletion(undefined);
+
+      if (discovered.length === 0) {
+        setNewProfileName("");
+        setPassphraseInput("");
+        setCreateWithPassphrase(false);
+        setStatus("No profiles found. Enter a profile name and press Enter.");
+        setStage("create-name");
+        return;
+      }
+
+      setStatus(`Deleted profile ${profilePendingDeletion}`);
+      setStage("select-profile");
+    } catch (error) {
+      setProfilePendingDeletion(undefined);
+      setStatus(error instanceof Error ? error.message : "Unable to delete profile");
+      setStage("select-profile");
+    }
   }
 
   useInput((input, key) => {
@@ -202,6 +251,10 @@ export function RootApp({ serverUrl }: RootAppProps): React.JSX.Element {
         setStage("create-name");
         return;
       }
+      if (input.toLowerCase() === "d") {
+        beginDeleteProfile();
+        return;
+      }
       if (key.return) {
         const profile = profiles[selectedIndex];
         if (!profile) {
@@ -214,6 +267,17 @@ export function RootApp({ serverUrl }: RootAppProps): React.JSX.Element {
           return;
         }
         void openSelectedProfile();
+      }
+      return;
+    }
+
+    if (stage === "confirm-delete") {
+      if (key.escape) {
+        cancelDeleteProfile();
+        return;
+      }
+      if (input.toLowerCase() === "y") {
+        confirmDeleteProfile();
       }
       return;
     }
@@ -253,9 +317,10 @@ export function RootApp({ serverUrl }: RootAppProps): React.JSX.Element {
               {profile.profileName} {profile.privateKeyEncrypted ? "(locked)" : ""}
             </Text>
           ))}
-          <Text dimColor>Enter to open. Press c to create a new profile.</Text>
+          <Text dimColor>Enter to open. Press c to create or d to delete the selected profile.</Text>
         </Box>
       ) : null}
+      {stage === "confirm-delete" ? <Text>{profilePendingDeletion ? `Delete profile ${profilePendingDeletion}? Press y to confirm.` : ""}</Text> : null}
       {stage === "unlock" ? <Text>Passphrase: {"*".repeat(passphraseInput.length)}</Text> : null}
     </Box>
   );
